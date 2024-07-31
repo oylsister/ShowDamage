@@ -10,7 +10,7 @@ namespace ShowDamage
     public class ShowDamage : BasePlugin
     {
         public override string ModuleName => "ShowDamage";
-        public override string ModuleVersion => "1.0";
+        public override string ModuleVersion => "1.1";
         public override string ModuleAuthor => "Oylsister";
 
         private SqliteConnection _database = null!;

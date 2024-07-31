@@ -69,6 +69,7 @@ namespace ShowDamage
         public void OnClientDisconnect(int clientSlot)
         {
             var client = Utilities.GetPlayerFromSlot(clientSlot);
+            _enableShowDamage.Remove(client!);
         }
 
         [CommandHelper(0, "", CommandUsage.CLIENT_ONLY)]

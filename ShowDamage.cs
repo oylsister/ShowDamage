@@ -15,36 +15,21 @@ namespace ShowDamage
     public class ShowDamage : BasePlugin
     {
         public override string ModuleName => "ShowDamage";
-        public override string ModuleVersion => "1.2";
+        public override string ModuleVersion => "1.3.0";
         public override string ModuleAuthor => "Oylsister";
 
         private SqliteConnection _database = null!;
         private Dictionary<CCSPlayerController, bool> _enableShowDamage = new Dictionary<CCSPlayerController, bool>();
-        private Dictionary<CCSPlayerController, double> _hudTime = new Dictionary<CCSPlayerController, double>();
-        private Dictionary<CCSPlayerController, DamageInfo> _damageInfo = new Dictionary<CCSPlayerController, DamageInfo>();
 
         public override void Load(bool hotReload)
         {
             RegisterEventHandler<EventPlayerHurt>(OnPlayerHurt);
             RegisterEventHandler<EventPlayerConnectFull>(OnPlayerConnectFull);
-            RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
-
-            RegisterListener<Listeners.OnMapStart>(MapStart);
-            RegisterListener<Listeners.OnMapEnd>(MapEnd);
+            RegisterListener<OnClientDisconnect>(OnClientDisconnect);
 
             LoadClientSettings().Wait();
 
             AddCommand("css_showdamage", "", ShowDamageCommand);
-        }
-
-        public void MapStart(string map)
-        {
-            RegisterListener<Listeners.OnTick>(OnGameFrame);
-        }
-
-        public void MapEnd()
-        {
-            RemoveListener<Listeners.OnTick>(OnGameFrame);
         }
 
         public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
@@ -56,8 +41,6 @@ namespace ShowDamage
                 return HookResult.Continue;
 
             OnClientPutInServer(@event.Userid!);
-            _hudTime.Add(@event.Userid, 0.0f);
-            _damageInfo.TryAdd(@event.Userid, new DamageInfo(@event.Userid, 0, 0, null));
 
             return HookResult.Continue;
         }
@@ -96,8 +79,6 @@ namespace ShowDamage
         {
             var client = Utilities.GetPlayerFromSlot(clientSlot);
             _enableShowDamage.Remove(client!);
-            _hudTime.Remove(client!);
-            _damageInfo.Remove(client!);
         }
 
         [CommandHelper(0, "", CommandUsage.CLIENT_ONLY)]
@@ -130,10 +111,16 @@ namespace ShowDamage
 
         private HookResult OnPlayerHurt(EventPlayerHurt @event, GameEventInfo gameEventInfo)
         {
-            var attacker = @event.Attacker!;
+            var attacker = @event.Attacker;
             var victim = @event.Userid;
             var damage = @event.DmgHealth;
             var health = victim!.PlayerPawn.Value!.Health;
+
+            if (attacker == null || !attacker.IsValid)
+                return HookResult.Continue;
+
+            if (attacker == victim)
+                return HookResult.Continue;
 
             if (attacker.IsBot)
                 return HookResult.Continue;
@@ -143,35 +130,16 @@ namespace ShowDamage
 
             if (_enableShowDamage[attacker])
             {
-                _hudTime[attacker] = Server.EngineTime + 2.0;
-
-                _damageInfo[attacker].Damage = damage;
-                _damageInfo[attacker].HP = health;
-                _damageInfo[attacker].Name = victim.PlayerName; 
+                ShowDamageToClient(attacker, damage, health, victim.PlayerName);
             }
 
             return HookResult.Continue;
         }
 
-        public void OnGameFrame()
-        {
-            foreach(var player in Utilities.GetPlayers())
-            {
-                if (!_enableShowDamage.ContainsKey(player))
-                    continue;
-
-                if (_enableShowDamage[player])
-                {
-                    if (_hudTime[player] > Server.EngineTime)
-                        ShowDamageToClient(player, _damageInfo[player].Damage, _damageInfo[player].HP, _damageInfo[player].Name!);
-                }
-            }
-        }
-
         void ShowDamageToClient(CCSPlayerController client, int damage, int hpleft, string clientname)
         {
-            var message = $"Damage: {damage}<br>{clientname} HP: {hpleft}";
-            client.PrintToCenterHtml(message);
+            var message = $"Damage: {damage}\n{clientname} HP: {hpleft}";
+            client.PrintToCenter(message);
         }
 
         public async void InitialUpdate(CCSPlayerController client)
@@ -215,21 +183,5 @@ namespace ShowDamage
         {
             await _database.ExecuteAsync($"UPDATE showdamage SET showtext = {value} WHERE player_auth = \"{auth}\";");
         }
-    }
-
-    public class DamageInfo
-    {
-        public DamageInfo(CCSPlayerController attacker, int damage, int hP, string? name)
-        {
-            Attacker = attacker;
-            Damage = damage;
-            HP = hP;
-            Name = name;
-        }
-
-        public CCSPlayerController Attacker { get; set; }
-        public int Damage { get; set; }
-        public int HP { get; set; }
-        public string? Name { get; set; }
     }
 }
